@@ -296,41 +296,64 @@ class EmailApp(ctk.CTk):
             return
 
         self.send_btn.configure(state="disabled")
-        total = len(self.df)
+        # Se test_mode è attivo, invia solo la prima riga
+        rows_to_send = [self.df.iloc[0]] if self.test_mode.get() else self.df.iterrows()
+
+        total = len(rows_to_send) if self.test_mode.get() else len(self.df)
         sent = 0
         errors = 0
 
         with open("email_log.txt", "a", encoding="utf-8") as log:
-            for index, row in self.df.iterrows():
-                recipient = (
-                    SMTP_USER if self.test_mode.get() else str(row.iloc[0]).strip()
-                )
-                if not re.match(r"[^@]+@[^@]+\.[^@]+", recipient):
-                    errors += 1
-                    log.write(f"Email non valida: {recipient}\n")
-                    continue
-
+            if self.test_mode.get():
+                row = rows_to_send[0]
+                recipient = SMTP_USER  # sempre invio a te
                 subject = subject_template
                 body = body_template
                 for col in self.df.columns:
                     subject = subject.replace(f"{{{{{col}}}}}", str(row[col]))
                     body = body.replace(f"{{{{{col}}}}}", str(row[col]))
-
                 msg = MIMEMultipart()
                 msg["From"] = SMTP_USER
                 msg["To"] = recipient
                 msg["Subject"] = subject
                 msg.attach(MIMEText(body, "html"))
-
                 try:
                     server.send_message(msg)
                     sent += 1
                 except Exception as e:
                     errors += 1
                     log.write(f"Errore invio a {recipient}: {str(e)}\n")
-
-                self.progress.set((index + 1) / total)
+                self.progress.set(1)
                 self.update_idletasks()
+            else:
+                for index, row in self.df.iterrows():
+                    recipient = str(row.iloc[0]).strip()
+                    if not re.match(r"[^@]+@[^@]+\.[^@]+", recipient):
+                        errors += 1
+                        log.write(f"Email non valida: {recipient}\n")
+                        continue
+
+                    subject = subject_template
+                    body = body_template
+                    for col in self.df.columns:
+                        subject = subject.replace(f"{{{{{col}}}}}", str(row[col]))
+                        body = body.replace(f"{{{{{col}}}}}", str(row[col]))
+
+                    msg = MIMEMultipart()
+                    msg["From"] = SMTP_USER
+                    msg["To"] = recipient
+                    msg["Subject"] = subject
+                    msg.attach(MIMEText(body, "html"))
+
+                    try:
+                        server.send_message(msg)
+                        sent += 1
+                    except Exception as e:
+                        errors += 1
+                        log.write(f"Errore invio a {recipient}: {str(e)}\n")
+
+                    self.progress.set((index + 1) / total)
+                    self.update_idletasks()
 
         server.quit()
         self.send_btn.configure(state="normal")
