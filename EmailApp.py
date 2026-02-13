@@ -47,6 +47,8 @@ class EmailApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
+        self.iconbitmap("icon.ico")
+
         self.title("Mail Merge - Excel Sender")
         self.geometry("1000x700")
 
