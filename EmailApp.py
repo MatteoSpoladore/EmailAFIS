@@ -47,7 +47,7 @@ class EmailApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.iconbitmap("icon.ico")
+        self.iconbitmap("mail.ico")
 
         self.title("Mail Merge - Excel Sender")
         self.geometry("1000x700")
@@ -501,10 +501,10 @@ class EmailApp(ctk.CTk):
             try:
                 server.send_message(msg)
                 sent += 1
-                logging.info(f" <<TEST>> Email inviata correttamente a {recipient}")
+                logging.info(f"Email inviata correttamente a {recipient}")
             except Exception as e:
                 errors += 1
-                logging.error(f"<<TEST>> Errore invio a {recipient}: {e}")
+                logging.error(f"Errore invio a {recipient}: {e}")
 
             self.after(0, lambda i=index_counter, t=total: self.progress.set(i / t))
 
