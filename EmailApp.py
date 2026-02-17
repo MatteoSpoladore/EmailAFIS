@@ -75,35 +75,65 @@ class EmailApp(ctk.CTk):
         self.grid_rowconfigure(3, weight=1)
         self._last_preview_path: Optional[Path] = None
 
-        # Sidebar
+        # Sidebar scrollabile
         self.sidebar = ctk.CTkFrame(self, width=250)
         self.sidebar.grid(row=0, column=0, rowspan=4, sticky="nsw", padx=10, pady=10)
+
+        # # Canvas per scroll
+        # self.sidebar_canvas = ctk.CTkCanvas(
+        #     self.sidebar_container, width=250, highlightthickness=0
+        # )
+        # self.sidebar_scrollbar = ctk.CTkScrollbar(
+        #     self.sidebar_container,
+        #     orientation="vertical",
+        #     command=self.sidebar_canvas.yview,
+        # )
+        # self.sidebar_canvas.configure(yscrollcommand=self.sidebar_scrollbar.set)
+
+        # self.sidebar_scrollbar.pack(side="right", fill="y")
+        # self.sidebar_canvas.pack(side="left", fill="both", expand=True)
+
+        # # Frame interno
+        # self.sidebar = ctk.CTkFrame(self.sidebar_canvas)
+        # self.sidebar_id = self.sidebar_canvas.create_window(
+        #     (0, 0), window=self.sidebar, anchor="nw"
+        # )
+
+        # # Aggiorna scroll e dimensione frame interno
+        # def update_scroll_region(event):
+        #     self.sidebar_canvas.configure(scrollregion=self.sidebar_canvas.bbox("all"))
+        #     # forza larghezza frame interno uguale al canvas
+        #     canvas_width = self.sidebar_canvas.winfo_width()
+        #     self.sidebar_canvas.itemconfig(self.sidebar_id, width=canvas_width)
+
+        # self.sidebar.bind("<Configure>", update_scroll_region)
+        # self.sidebar_canvas.bind("<Configure>", update_scroll_region)
 
         # --- Theme Switch ---
         self.theme_switch = ctk.CTkSwitch(
             self.sidebar, text="Chiaro", command=self.toggle_theme
         )
-        self.theme_switch.pack(pady=(10, 20), fill="x")
+        self.theme_switch.pack(pady=(5, 20), fill="x")
 
         self.load_btn = ctk.CTkButton(
             self.sidebar, text="Carica Excel", command=self.load_file
         )
-        self.load_btn.pack(pady=10, fill="x")
+        self.load_btn.pack(pady=5, fill="x")
 
         self.load_word_btn = ctk.CTkButton(
             self.sidebar, text="Carica Template Word", command=self.load_word_template
         )
         self.load_word_btn.pack(pady=10, fill="x")
 
-        self.create_word_btn = ctk.CTkButton(
-            self.sidebar, text="Crea Template Word", command=self.create_word_template
-        )
-        self.create_word_btn.pack(pady=10, fill="x")
-
         self.create_excel_btn = ctk.CTkButton(
             self.sidebar, text="Crea Template Excel", command=self.create_excel_template
         )
         self.create_excel_btn.pack(pady=10, fill="x")
+
+        self.create_word_btn = ctk.CTkButton(
+            self.sidebar, text="Crea Template Word", command=self.create_word_template
+        )
+        self.create_word_btn.pack(pady=10, fill="x")
 
         self.preview_btn = ctk.CTkButton(
             self.sidebar, text="Anteprima Prima Email", command=self.preview_email
@@ -115,17 +145,12 @@ class EmailApp(ctk.CTk):
         )
         self.fields_btn.pack(pady=10, fill="x")
 
-        self.test_mode = ctk.CTkCheckBox(
-            self.sidebar, text="Modalità TEST (invio solo a me)  "
-        )
-        self.test_mode.pack(pady=10, anchor="w")
-
         self.attach_checkbox = ctk.CTkCheckBox(
             self.sidebar,
             text="Abilita allegati da Excel      ",
             variable=self.attachments_enabled,
         )
-        self.attach_checkbox.pack(pady=20, anchor="w")
+        self.attach_checkbox.pack(pady=5, anchor="w")
 
         self.select_folder_attach_btn = ctk.CTkButton(
             self.sidebar,
@@ -137,15 +162,20 @@ class EmailApp(ctk.CTk):
         self.attach_folder_label = ctk.CTkLabel(self.sidebar, text="Cartella: Nessuna")
         self.attach_folder_label.pack(pady=5)
 
+        self.test_text = ctk.CTkLabel(self.sidebar, text="Modalità TEST(un invio a me)")
+        self.test_text.pack(pady=5)
+        self.test_mode = ctk.CTkCheckBox(self.sidebar, text="TEST?")
+        self.test_mode.pack(pady=5, anchor="w")
+
         self.send_btn = ctk.CTkButton(
             self.sidebar, text="Invia Email", command=self.send_emails
         )
-        self.send_btn.pack(pady=20, fill="x")
+        self.send_btn.pack(pady=5, fill="x")
 
         self.info_btn = ctk.CTkButton(
             self.sidebar, text="Guida all'uso", command=self.guida_uso
         )
-        self.info_btn.pack(pady=50, fill="x")
+        self.info_btn.pack(pady=5, fill="x")
 
         # Oggetto
         self.subject_label = ctk.CTkLabel(self, text="Oggetto Email")
