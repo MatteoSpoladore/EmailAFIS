@@ -18,6 +18,10 @@ import webbrowser
 import tempfile
 from pathlib import Path
 import html as _html
+import mimetypes
+from email.mime.base import MIMEBase
+from email import encoders
+
 
 load_dotenv()
 
@@ -32,8 +36,13 @@ SMTP_PASSWORD: Optional[str] = os.getenv("SMTP_PASSWORD")
 USE_TLS: bool = os.getenv("USE_TLS", "True").lower() in ("1", "true", "yes")
 
 # basic logging to file (keeps existing email_log.txt behavior consistent)
+app_log_dir = Path(os.getenv("LOCALAPPDATA", Path.home())) / "EmailApp"
+app_log_dir.mkdir(parents=True, exist_ok=True)
+
+log_file_path = app_log_dir / "email_log.txt"
+
 logging.basicConfig(
-    filename="email_log.txt",
+    filename=str(log_file_path),
     level=logging.INFO,
     format="[%(asctime)s] %(message)s",
     datefmt="%d-%m-%Y %H:%M:%S",
@@ -47,7 +56,13 @@ class EmailApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.iconbitmap("mail.ico")
+        self.attachments_enabled = ctk.BooleanVar(value=False)
+        self.attachments_folder: Optional[str] = None
+
+        try:
+            self.iconbitmap("mail.ico")
+        except Exception:
+            pass
 
         self.title("Mail Merge - Excel Sender")
         self.geometry("1000x700")
@@ -55,12 +70,13 @@ class EmailApp(ctk.CTk):
         self.df: Optional[pd.DataFrame] = None
         self.file_path: Optional[str] = None
 
+        # self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(3, weight=1)
         self._last_preview_path: Optional[Path] = None
 
         # Sidebar
-        self.sidebar = ctk.CTkFrame(self, width=200)
+        self.sidebar = ctk.CTkFrame(self, width=250)
         self.sidebar.grid(row=0, column=0, rowspan=4, sticky="nsw", padx=10, pady=10)
 
         self.load_btn = ctk.CTkButton(
@@ -94,9 +110,26 @@ class EmailApp(ctk.CTk):
         self.fields_btn.pack(pady=10, fill="x")
 
         self.test_mode = ctk.CTkCheckBox(
-            self.sidebar, text="Modalità TEST (invio solo a me)"
+            self.sidebar, text="Modalità TEST (invio solo a me)  "
         )
-        self.test_mode.pack(pady=20)
+        self.test_mode.pack(pady=10, anchor="w")
+
+        self.attach_checkbox = ctk.CTkCheckBox(
+            self.sidebar,
+            text="Abilita allegati da Excel      ",
+            variable=self.attachments_enabled,
+        )
+        self.attach_checkbox.pack(pady=20, anchor="w")
+
+        self.select_folder_attach_btn = ctk.CTkButton(
+            self.sidebar,
+            text="Seleziona cartella allegati",
+            command=self.select_attachments_folder,
+        )
+        self.select_folder_attach_btn.pack(pady=5, fill="x")
+
+        self.attach_folder_label = ctk.CTkLabel(self.sidebar, text="Cartella: Nessuna")
+        self.attach_folder_label.pack(pady=5)
 
         self.send_btn = ctk.CTkButton(
             self.sidebar, text="Invia Email", command=self.send_emails
@@ -246,7 +279,7 @@ class EmailApp(ctk.CTk):
             ws.title = "Template"
 
             # Intestazioni
-            ws.append(["Email", "Nome", "Cognome", "AltroCampo"])
+            ws.append(["Email", "Nome", "Cognome", "AltroCampo", "ALLEGATO"])
 
             # Riga esempio
             ws.append(["esempio@email.com", "Mario", "Rossi", "Valore"])
@@ -274,7 +307,7 @@ class EmailApp(ctk.CTk):
 
     def guida_uso(self) -> None:
 
-        guida: str = """
+        guida: str = f"""
         
         1) Caricare un file excel dove ogni colonna corrisponde ad un campo
         
@@ -282,13 +315,18 @@ class EmailApp(ctk.CTk):
         
         3) Per inserire (se non già fatto da chat gpt) i vari campi nell'oggetto e nel corpo che variano ad ogni singola mail inviata utilizzare {{NomeColonna}}
         
-        4) Una volta completata la mail (oggetto e corpo) verranno inviate ad ogni mail presente nella prima colonna del file Excel
+        4) il campo ALLEGATO è dedicato solo all'inserimento di allegati, in quella colonna verranno inseriti soltanto i nomi dei file (es 'file.pdf')
         
-        5) Usare la modalità Test per inviare una mail di prova a se stessi
+        5) Una volta completata la mail (oggetto e corpo) verranno inviate ad ogni mail presente nella prima colonna del file Excel
         
-        6) Usare anteprima per generare una anteprima della prima mail
+        6) Usare la modalità Test per inviare una mail di prova a se stessi
         
-        7) Controllare il file email_log.txt per verficare il motivo di errori nell'invio di una mail
+        7) Usare anteprima per generare una anteprima della prima mail
+        
+        8) Controllare il file email_log.txt per verficare il motivo di errori nell'invio di una mail
+        
+        9) i log delle mail sono visualizzabili in {log_file_path}
+        
         
         """
         self.show_dialog("Campi disponibili", message=guida, width=1000, height=400)
@@ -331,7 +369,7 @@ class EmailApp(ctk.CTk):
 
         # Escape subject, body: if body seems to contain HTML keep it as-is, altrimenti escape + nl2br
         safe_subject = _html.escape(subject)
-        body_is_html = "<" in body and ">" in body
+        body_is_html = bool(re.search(r"<[a-zA-Z][^>]*>", body))
         if body_is_html:
             safe_body = body
         else:
@@ -352,18 +390,34 @@ class EmailApp(ctk.CTk):
 </html>
 """
 
-        # scrivi su file temporaneo e apri nel browser predefinito
         try:
+
+            if self._last_preview_path:
+                self._remove_preview_file(self._last_preview_path)
+
             tf = tempfile.NamedTemporaryFile(
                 delete=False, suffix=".html", mode="w", encoding="utf-8"
             )
             tf.write(html_content)
             tf.flush()
             tf.close()
-            webbrowser.open_new_tab(Path(tf.name).as_uri())
+
+            preview_path = Path(tf.name)
+            self._last_preview_path = preview_path
+            webbrowser.open_new_tab(preview_path.as_uri())
+            self._schedule_preview_cleanup(preview_path, delay=300)
+
         except Exception as e:
             self.show_dialog(
                 "Errore Anteprima", f"Impossibile creare anteprima HTML:\n{e}"
+            )
+
+    def select_attachments_folder(self) -> None:
+        folder = filedialog.askdirectory()
+        if folder:
+            self.attachments_folder = folder
+            self.attach_folder_label.configure(
+                text=f"Cartella:{os.path.basename(folder)}"
             )
 
     def send_emails(self) -> None:
@@ -371,6 +425,17 @@ class EmailApp(ctk.CTk):
             self.show_dialog("Errore", "Caricare prima un file Excel.")
             return
 
+        if self.attachments_enabled.get():
+            if "ALLEGATO" not in self.df.columns:
+                self.show_dialog(
+                    "Errore Allegati", "Colonna 'ALLEGATO' non trovata nel file Excel"
+                )
+                return
+            if not self.attachments_folder:
+                self.show_dialog(
+                    "Errore Allegati", "Selezionare la cartella degli allegati"
+                )
+                return
         subject_template = self.subject_entry.get().strip()
         body_template = self.body_text.get("1.0", "end").strip()
         if not subject_template or not body_template:
@@ -435,7 +500,7 @@ class EmailApp(ctk.CTk):
                 and SMTP_USER is not None
                 and SMTP_PASSWORD is not None
             )
-            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30)
             server.ehlo()
             if USE_TLS:
                 server.starttls()
@@ -464,6 +529,7 @@ class EmailApp(ctk.CTk):
                 break
 
             index_counter += 1
+
             recipient = str(row.iloc[0]).strip() if len(row) > 0 else ""
             if self.test_mode.get():
                 recipient = SMTP_USER
@@ -492,11 +558,65 @@ class EmailApp(ctk.CTk):
                 subject = subject.replace(f"{{{{{col}}}}}", val_str)
                 body = body.replace(f"{{{{{col}}}}}", val_str)
 
-            msg = MIMEMultipart()
-            msg["From"] = SMTP_USER
-            msg["To"] = recipient
-            msg["Subject"] = subject
-            msg.attach(MIMEText(body, "html"))
+            # msg = MIMEMultipart("alternative")
+            # msg["From"] = SMTP_USER
+            # msg["To"] = recipient
+            # msg["Subject"] = subject
+            # plain_body = re.sub("<[^<]+?>", "", body)
+            # msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+            # msg.attach(MIMEText(body, "html", "utf-8"))
+
+            outer = MIMEMultipart("mixed")
+            outer["From"] = SMTP_USER
+            outer["To"] = recipient
+
+            from email.header import Header
+
+            safe_subject = subject.replace("\r", "").replace("\n", "")
+            outer["Subject"] = Header(safe_subject, "utf-8")
+
+            alternative = MIMEMultipart("alternative")
+
+            plain_body = re.sub("<[^<]+?>", "", body)
+            alternative.attach(MIMEText(plain_body, "plain", "utf-8"))
+            alternative.attach(MIMEText(body, "html", "utf-8"))
+
+            outer.attach(alternative)
+
+            msg = outer
+
+            # ATTACHMENTS
+            if self.attachments_enabled.get():
+                file_name = str(row.get("ALLEGATO", "")).strip()
+
+                if file_name:
+                    assert self.attachments_folder is not None
+                    file_path = os.path.join(self.attachments_folder, file_name)
+
+                    if os.path.exists(file_path):
+                        try:
+                            with open(file_path, "rb") as f:
+                                # part = MIMEBase("application", "octet-stream")
+                                # part.set_payload(f.read())
+                                mime_type, _ = mimetypes.guess_type(file_path)
+                                if mime_type:
+                                    maintype, subtype = mime_type.split("/", 1)
+                                else:
+                                    maintype, subtype = "application", "octet-stream"
+
+                                part = MIMEBase(maintype, subtype)
+                                part.set_payload(f.read())
+
+                            encoders.encode_base64(part)
+                            part.add_header(
+                                "Content-Disposition",
+                                f"attachment; filename='{file_name}'",
+                            )
+                            msg.attach(part)
+                        except Exception as e:
+                            logging.error(f"Errore allegato {file_path}: {e}")
+                    else:
+                        logging.error(f"File non trovato: {file_path}")
 
             try:
                 server.send_message(msg)
