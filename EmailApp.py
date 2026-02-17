@@ -179,7 +179,7 @@ class EmailApp(ctk.CTk):
             self.theme_switch.configure(text="Scuro")
         else:
             ctk.set_appearance_mode("light")
-            ctk.set_default_color_theme("light-blue")
+            ctk.set_default_color_theme("blue")
             self.theme_switch.configure(text="Chiaro")
 
     def show_dialog(
