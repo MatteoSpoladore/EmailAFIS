@@ -48,8 +48,8 @@ logging.basicConfig(
     datefmt="%d-%m-%Y %H:%M:%S",
 )
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("dark-blue")
+ctk.set_appearance_mode("light")
+ctk.set_default_color_theme("blue")
 
 
 class EmailApp(ctk.CTk):
@@ -78,6 +78,12 @@ class EmailApp(ctk.CTk):
         # Sidebar
         self.sidebar = ctk.CTkFrame(self, width=250)
         self.sidebar.grid(row=0, column=0, rowspan=4, sticky="nsw", padx=10, pady=10)
+
+        # --- Theme Switch ---
+        self.theme_switch = ctk.CTkSwitch(
+            self.sidebar, text="Chiaro", command=self.toggle_theme
+        )
+        self.theme_switch.pack(pady=(10, 20), fill="x")
 
         self.load_btn = ctk.CTkButton(
             self.sidebar, text="Carica Excel", command=self.load_file
@@ -165,6 +171,17 @@ class EmailApp(ctk.CTk):
         self.status_label.grid(row=5, column=1, sticky="ew", padx=10, pady=(0, 10))
 
     # --- Funzioni ---
+
+    def toggle_theme(self):
+        if self.theme_switch.get() == 1:
+            ctk.set_appearance_mode("dark")
+            ctk.set_default_color_theme("dark-blue")
+            self.theme_switch.configure(text="Scuro")
+        else:
+            ctk.set_appearance_mode("light")
+            ctk.set_default_color_theme("light-blue")
+            self.theme_switch.configure(text="Chiaro")
+
     def show_dialog(
         self, title: str, message: str, width: int = 500, height: int = 250
     ) -> None:
