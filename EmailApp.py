@@ -620,7 +620,7 @@ class EmailApp(ctk.CTk):
             from email.header import Header
 
             safe_subject = subject.replace("\r", "").replace("\n", "")
-            outer["Subject"] = Header(safe_subject, "utf-8")
+            outer["Subject"] = str(Header(safe_subject, "utf-8"))
 
             alternative = MIMEMultipart("alternative")
 
