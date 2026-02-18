@@ -1,146 +1,290 @@
-# Mail Merge App - Excel & Word Sender
+# EmailApp – Mail Merge Excel con Invio SMTP
 
-Applicazione per inviare email personalizzate a partire da un file Excel, utilizzando template Word per oggetto e corpo email. Include funzionalità di creazione rapida di template, anteprima messaggi, modalità test e log invii. Supporta placeholder `{{NomeColonna}}` mappati alle colonne Excel.
+EmailApp è un’applicazione desktop con interfaccia grafica (basata su `customtkinter`) che consente l’invio massivo di email personalizzate (mail merge) utilizzando un file Excel come sorgente dati.
+
+È pensata per contesti amministrativi, scolastici, associativi o aziendali in cui sia necessario inviare comunicazioni strutturate e personalizzate a più destinatari, con eventuali allegati specifici per ciascun destinatario.
 
 ---
 
-## Caratteristiche
+## Funzionalità principali
 
-- Interfaccia grafica moderna con **CustomTkinter** e tema scuro.
-- Caricamento **Excel** come sorgente dati.
-- Caricamento **Word** come template (oggetto + corpo).
-- Possibilità di creare rapidamente template Word ed Excel predefiniti.
-- Supporto per email **HTML** con grassetto, corsivo, sottolineato e link.
-- Anteprima della prima email e visualizzazione dei campi disponibili.
-- Modalità TEST: invio solo all’utente per verifica.
-- Log dettagliato degli invii in `email_log.txt`.
-- Placeholder `{{NomeColonna}}` sostituiti con i valori delle colonne Excel.
+- Mail merge da file Excel (.xlsx)
+- Placeholder dinamici nel formato `{{NomeColonna}}`
+- Supporto corpo email in HTML o testo semplice
+- Allegati personalizzati per ogni riga Excel
+- Modalità TEST (invio singolo all’utente SMTP)
+- Anteprima HTML della prima email
+- Invio in thread separato (interfaccia non bloccante)
+- Logging dettagliato su file locale
+- Tema chiaro/scuro selezionabile
 
 ---
 
 ## Requisiti
 
+- Python 3.9+
+- Dipendenze:
+
 ```bash
-pip install customtkinter pandas python-dotenv openpyxl python-docx
+pip install customtkinter pandas python-dotenv python-docx openpyxl
 ```
 
-- File `.env` con credenziali email:
+---
 
-```env
-SMTP_SERVER=smtp.gmail.com
+## Configurazione SMTP
+
+Le credenziali SMTP vengono caricate tramite variabili d’ambiente (consigliato uso di file `.env`):
+
+```
+SMTP_SERVER=smtp.example.com
 SMTP_PORT=587
-SMTP_USER=tua_email@gmail.com
-SMTP_PASSWORD=la_tua_password_app
+SMTP_USER=tuamail@email.com
+SMTP_PASSWORD=tuapassword
 USE_TLS=True
 ```
 
-> Nota: Gmail richiede password per app.
+Note:
+
+- `SMTP_USER` viene utilizzato anche come indirizzo mittente.
+- `USE_TLS=True` abilita STARTTLS.
+- La configurazione viene validata prima dell’invio.
 
 ---
 
-## Inizializzazione UV
+## Struttura del file Excel
 
-```bash
-uv init .
-uvi add EmailApp.py
-uvi add .env
-uvi add requirements.txt
-uv commit -m "Prima versione Mail Merge App"
+Il file deve essere in formato `.xlsx`.
+
+Struttura esempio:
+
+| Email                                   | Nome  | Corso | Prezzo | ALLEGATO |
+| --------------------------------------- | ----- | ----- | ------ | -------- |
+| [test@email.com](mailto:test@email.com) | Marco | Piano | 120    | file.pdf |
+
+Regole:
+
+- Prima colonna → email destinatario.
+- Colonne successive → campi dinamici utilizzabili nei placeholder.
+- Colonna opzionale `ALLEGATO` → solo nome file (non percorso completo).
+- Ogni riga corrisponde a una email.
+
+Se una cella è vuota (anche ALLEGATO), viene trattata come stringa vuota.
+
+---
+
+## Sistema di Placeholder
+
+I placeholder devono usare doppie parentesi graffe:
+
+```
+{{NomeColonna}}
 ```
 
-- `uv init .` → inizializza il progetto UV.
-- `uvi add ...` → aggiunge file al controllo versione.
-- `uv commit` → salva le modifiche nel repository locale.
-
----
-
-## Funzionamento dell’app
-
-1. Avvia l’app con:
-
-```bash
-python EmailApp.py
-```
-
-2. **Carica un file Excel** contenente le email e i dati dei destinatari.
-3. **Carica un template Word** già pronto o creane uno nuovo tramite l’app.
-   - Il primo paragrafo del Word viene usato come oggetto dell’email.
-   - Il resto come corpo.
-   - Puoi usare i placeholder `{{NomeColonna}}` per sostituire i dati personalizzati.
-
-4. **Visualizza campi disponibili** con il pulsante “Mostra Campi”.
-5. **Anteprima della prima email** per verificare il contenuto e i placeholder.
-6. Abilita la **modalità TEST** per inviare solo a te.
-7. Premi **Invia Email** per iniziare l’invio.
-8. Controlla il log in `email_log.txt` per verificare invii riusciti e errori.
-
----
-
-## Suggerimenti
-
-- Verifica che i placeholder nel Word corrispondano esattamente ai nomi delle colonne Excel.
-- Per email con formattazione (grassetto, corsivo, link), il corpo deve essere scritto in **HTML** nel Word.
-- Per grandi invii, considera i limiti del provider SMTP o l’invio a batch.
-- Mantieni aggiornato il file `.env` con credenziali sicure e proteggi le password.
-
----
-
-## Template di esempio
+Esempio:
 
 Oggetto:
 
 ```
-Promemoria pagamento {{AnnoCorso}}
+Promemoria pagamento corso {{Corso}}
+```
+
+Corpo:
+
+```
+Gentile {{Nome}},
+l’importo di {{Prezzo}} € è in scadenza.
+```
+
+Prima dell’invio:
+
+1. I placeholder vengono estratti.
+2. Viene verificata la corrispondenza con le colonne Excel.
+3. In caso di campo mancante l’invio viene bloccato.
+4. I valori vengono sostituiti riga per riga.
+
+Se una cella contiene NaN o è vuota, viene convertita in stringa vuota.
+
+---
+
+## Logica di Composizione Email
+
+Ogni email viene costruita come:
+
+- `multipart/mixed` (contenitore esterno)
+  - `multipart/alternative`
+    - versione `text/plain`
+    - versione `text/html`
+
+  - allegato (se presente)
+
+Sanitizzazione oggetto:
+
+- I caratteri di ritorno a capo (`\r`) e nuova riga (`\n`) vengono rimossi.
+- Questo impedisce vulnerabilità di header injection e garantisce che l’oggetto sia una singola riga valida.
+
+Se nel corpo sono presenti tag HTML (es. `<p>`, `<b>`, `<a>`), viene inviato come HTML.
+In ogni caso viene sempre generata anche una versione plain text.
+
+---
+
+## Gestione Allegati
+
+Gli allegati sono opzionali e richiedono:
+
+- Checkbox “Abilita allegati”
+- Presenza della colonna `ALLEGATO`
+- Selezione della cartella contenente i file
+
+Comportamento per ogni riga:
+
+- Se la cella ALLEGATO è vuota → email inviata senza allegato.
+- Se è presente un nome file:
+  - Il file viene cercato nella cartella selezionata.
+  - Se trovato → allegato correttamente.
+  - Se non trovato → errore registrato nel log, ma l’email viene comunque inviata.
+
+È supportato un solo allegato per riga.
+
+---
+
+## Modalità TEST
+
+Se attivata:
+
+- Viene processata solo la prima riga del file.
+- Il destinatario viene forzato a `SMTP_USER`.
+- Utile per verificare formattazione e allegati prima dell’invio massivo.
+
+---
+
+## Anteprima
+
+La funzione “Anteprima Prima Email”:
+
+1. Usa la prima riga del file Excel.
+2. Sostituisce i placeholder.
+3. Genera un file HTML temporaneo.
+4. Lo apre nel browser predefinito.
+5. Lo elimina dopo un intervallo di tempo.
+
+Se l’app viene chiusa bruscamente, alcuni file temporanei potrebbero rimanere nel sistema.
+
+---
+
+## Logging
+
+Tutte le operazioni vengono registrate in:
+
+```
+%LOCALAPPDATA%/EmailApp/email_log.txt
+```
+
+Vengono tracciati:
+
+- Errori di connessione SMTP
+- Email non valide
+- File allegati mancanti
+- Errori di invio
+- Invii corretti
+
+---
+
+## Gestione Errori
+
+L’applicazione:
+
+- Valida la configurazione SMTP
+- Verifica i placeholder
+- Valida il formato email
+- Gestisce le eccezioni SMTP
+- Continua l’elaborazione anche se una riga fallisce
+
+Al termine viene mostrato un riepilogo:
+
+- Email inviate
+- Errori riscontrati
+
+---
+
+## Limitazioni
+
+- Supporta solo file `.xlsx`
+- Un solo allegato per riga
+- Nessun meccanismo automatico di retry
+- Nessun rate limiting
+- Nessuna autenticazione OAuth
+
+---
+
+# Esempio di Workflow
+
+### Scenario:
+
+Una scuola di musica deve inviare promemoria di pagamento con PDF personalizzato a ogni genitore.
+
+---
+
+### 1 – Preparazione Excel
+
+File `studenti.xlsx`:
+
+| Email                                   | Nome  | Corso   | Prezzo | Mese  | ALLEGATO  |
+| --------------------------------------- | ----- | ------- | ------ | ----- | --------- |
+| [gen1@email.com](mailto:gen1@email.com) | Marco | Piano   | 150    | Marzo | marco.pdf |
+| [gen2@email.com](mailto:gen2@email.com) | Anna  | Violino | 130    | Marzo | anna.pdf  |
+
+Cartella allegati:
+
+```
+/allegati/
+    marco.pdf
+    anna.pdf
+```
+
+---
+
+### 2 – Scrittura Template
+
+Oggetto:
+
+```
+Promemoria pagamento – corso {{Corso}}
 ```
 
 Corpo HTML:
 
-```html
-<p>Gentili Genitori,</p>
-
-<p>
-  Con la presente desideriamo ricordarvi il pagamento della retta relativa al
-  secondo trimestre del corso di musica {{AnnoCorso}} frequentato da vostro/a
-  figlio/a.
-</p>
-
-<p>
-  <b>L’importo dovuto è pari a {{Prezzo}} €</b> e può essere versato tramite
-  bonifico bancario:
-</p>
-<ul>
-  <li><b>IBAN: IT25L0863165011066000001528</b></li>
-  <li><b>Beneficiario: Associazione Filarmonica Sanvitese</b></li>
-</ul>
-
-<p>
-  Cogliamo inoltre l’occasione per ricordare che è necessario rinnovare la quota
-  associativa e assicurativa, per un importo complessivo di
-  <u>{{QuotaAssociativa}}</u> €.
-</p>
-
-<p>
-  Tali quote dovranno essere versate presso la segreteria nei giorni di
-  mercoledì e venerdì, dalle ore 16.30 alle ore 18.30, con pagamento in contanti
-  entro il mese di {{MesePagamento}} {{AnnoPagamento}}.
-</p>
-
-<hr />
-
-<p>
-  <b>Cordiali saluti,</b><br />
-  <b>Segreteria AFIS</b><br />
-  <i>E. Pitton</i>
-</p>
-
-<p>_____________________________</p>
-
-<p>
-  <b>Filarmonica Sanvitese APS</b><br />
-  Piazzale Hermann Zotti, 1<br />
-  33078 San Vito Al Tagliamento (PN)<br />
-  Tel.: 3396771611<br />
-  <a href="https://www.afisanvitese.it">www.afisanvitese.it</a><br />
-  <a href="mailto:scuola@afisanvitese.it">scuola@afisanvitese.it</a>
-</p>
 ```
+<p>Gentile {{Nome}},</p>
+
+<p>Le ricordiamo che il pagamento di <b>{{Prezzo}} €</b> relativo al corso di {{Corso}} è in scadenza nel mese di {{Mese}}.</p>
+
+<p>In allegato trova il documento dettagliato.</p>
+
+<p>Cordiali saluti,<br>
+Segreteria</p>
+```
+
+---
+
+### 3 – Attivazione Allegati
+
+- Spuntare “Abilita allegati”
+- Selezionare la cartella `/allegati/`
+
+---
+
+### 4 – Modalità Test
+
+- Attivare TEST
+- Inviare
+- Verificare corretta ricezione
+
+---
+
+### 5 – Invio Massivo
+
+- Disattivare TEST
+- Cliccare “Invia Email”
+- Monitorare barra di avanzamento
+- Verificare riepilogo finale
+- Controllare il file di log in caso di errori
