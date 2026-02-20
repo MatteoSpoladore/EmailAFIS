@@ -591,7 +591,7 @@ class EmailApp(ctk.CTk):
         
         
         """
-        self.show_dialog("Campi disponibili", message=guida, width=1000, height=400)
+        self.show_dialog("Guida all'uso", message=guida, width=1000, height=400)
 
     def validate_placeholders(self, text: str) -> Tuple[bool, Optional[List[str]]]:
         assert self.df is not None
